@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brownian Motion OHLCV Chart</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Roboto&display=swap"
+        rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Roboto', Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background-color: #222;
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #controls {
+            background-color: #333;
+            padding: 20px;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 800px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            align-items: start;
+        }
+
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-item.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .control-item.auto-generate {
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        label {
+            font-size: 14px;
+            color: #ddd;
+        }
+
+        input, select {
+            padding: 8px;
+            border-radius: 4px;
+            border: none;
+            background-color: #444;
+            color: white;
+            width: 100%;
+        }
+
+        .auto-generate-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .auto-generate-group input[type="checkbox"] {
+            max-width: 20px;
+            width: 20px;
+            margin: 0;
+        }
+
+        .auto-generate-group input[type="number"] {
+            max-width: 80px;
+            width: 100%;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 25px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        #regenerateBtn {
+            background-color: #4CAF50;
+        }
+
+        #regenerateBtn:hover {
+            background-color: #45a049;
+        }
+
+        #oneStepBtn {
+            background-color: #504CAF;
+        }
+
+        #oneStepBtn:hover {
+            background-color: #4945a0;
+        }
+
+        #chart-container {
+            width: 100%;
+            max-width: 1000px;
+            max-height: 600px;
+            overflow: hidden;
+        }
+
+        #chart {
+            width: 100%;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        #error {
+            color: #ff4444;
+            text-align: center;
+            font-size: 14px;
+            padding: 5px;
+        }
+
+        @media (max-width: 600px) {
+            #controls {
+                grid-template-columns: 1fr;
+                padding: 15px;
+            }
+
+            .button-group {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            button {
+                width: 100%;
+                max-width: 250px;
+            }
+
+            .control-item.auto-generate {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        @media (max-width: 400px) {
+            body {
+                padding: 10px;
+            }
+
+            .control-item {
+                gap: 5px;
+            }
+
+            button {
+                padding: 8px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="controls">
+            <div class="control-item">
+                <label for="startDate">Start Date:</label>
+                <input type="date" id="startDate" value="2021-05-25">
+            </div>
+            <div class="control-item">
+                <label for="timeframe">Timeframe:</label>
+                <select id="timeframe">
+                    <option value="1m" selected>1 Minute</option>
+                    <option value="5m">5 Minutes</option>
+                    <option value="1h">1 Hour</option>
+                    <option value="1d">1 Day</option>
+                </select>
+            </div>
+            <div class="control-item">
+                <label for="shift">Initial Price (Shift):</label>
+                <input type="number" id="shift" value="10000" min="1" step="1">
+            </div>
+            <div class="control-item">
+                <label for="numCandles">Number of Candles:</label>
+                <input type="number" id="numCandles" value="200" min="1" max="1000" step="1">
+            </div>
+            <div class="control-item">
+                <label for="price-percentage">Price % Change:</label>
+                <input type="number" id="price-percentage" value="0.5" min="0" step="0.1">
+            </div>
+            <div class="control-item">
+                <label for="volume-percentage">Volume % Change:</label>
+                <input type="number" id="volume-percentage" value="10" min="0" step="0.1">
+            </div>
+            <div class="control-item auto-generate">
+                <label for="autoGenerate">Auto-generate every N seconds:</label>
+                <div class="auto-generate-group">
+                    <input type="checkbox" id="autoGenerate">
+                    <input type="number" id="intervalSeconds" value="1" min="1" step="1">
+                </div>
+            </div>
+            <div class="control-item full-width">
+                <div class="button-group">
+                    <button id="regenerateBtn">Regenerate Chart</button>
+                    <button id="oneStepBtn">One Step</button>
+                </div>
+            </div>
+        </div>
+        <div id="error"></div>
+        <div id="chart-container">
+            <div id="chart"></div>
+        </div>
+    </div>
+
+    <script>
+        // Function to generate a standard normal random variable using Box-Muller transform
+        function normalRandom() {
+            let u1 = Math.random();
+            let u2 = Math.random();
+            let z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+            return z0;
+        }
+
+        // Function to convert timeframe string (e.g., '1m', '5h') to seconds
+        function convertTimeframeToSeconds(timeframe) {
+            let match = timeframe.match(/^(\d+)([mhd])$/);
+            if (!match) throw new Error('Invalid timeframe format');
+            let value = parseInt(match[1]);
+            let unit = match[2];
+            switch (unit) {
+                case 'm': return value * 60;
+                case 'h': return value * 3600;
+                case 'd': return value * 86400;
+                default: throw new Error('Unsupported timeframe unit');
+            }
+        }
+
+        // Class to generate OHLCV data points based on Brownian motion
+        class OHLCVGenerator {
+            constructor(dateFromTimestamp, timeframe, shift, oneCandlePricePercentageApprox, oneCandleVolumePercentageApprox) {
+                this.timestamp = dateFromTimestamp;
+                this.timeframeSeconds = convertTimeframeToSeconds(timeframe);
+                this.shift = shift;
+                this.oneCandlePricePercentageApprox = oneCandlePricePercentageApprox;
+                this.oneCandleVolumePercentageApprox = oneCandleVolumePercentageApprox;
+                this.eventsPerCandle = 10;
+                this.oneEventPricePercentage = (oneCandlePricePercentageApprox / 100) / this.eventsPerCandle;
+                this.oneEventVolumePercentage = (oneCandleVolumePercentageApprox / 100) / this.eventsPerCandle;
+                this.ohlcValues = [];
+                this.volumeValues = [];
+            }
+
+            next() {
+                for (let i = 0; i < this.eventsPerCandle; i++) {
+                    if (this.volumeValues.length > 0) {
+                        let value = this.shift * this.oneCandleVolumePercentageApprox * normalRandom();
+                        this.volumeValues.push(Math.max(0, this.volumeValues[this.volumeValues.length - 1] + value));
+                    } else {
+                        this.volumeValues.push(Math.max(0, this.shift));
+                    }
+                    if (i == 0 && this.ohlcValues.length > 0) {
+                        this.ohlcValues.push(this.ohlcValues[this.ohlcValues.length - 1]);
+                        continue;
+                    }
+                    if (this.ohlcValues.length > 0) {
+                        let value = this.shift * this.oneEventPricePercentage * normalRandom();
+                        this.ohlcValues.push(this.ohlcValues[this.ohlcValues.length - 1] + value);
+                    } else {
+                        this.ohlcValues.push(this.shift);
+                    }
+                }
+                this.ohlcValues = this.ohlcValues.slice(-this.eventsPerCandle);
+                this.volumeValues = this.volumeValues.slice(-this.eventsPerCandle);
+                let open = this.ohlcValues[0];
+                let high = Math.max(...this.ohlcValues);
+                let low = Math.min(...this.ohlcValues);
+                let close = this.ohlcValues[this.ohlcValues.length - 1];
+                let volume = this.volumeValues.reduce((a, b) => a + b, 0) / this.volumeValues.length;
+
+                let ohlcv = {
+                    timestamp: this.timestamp,
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close,
+                    volume: volume
+                };
+                this.timestamp += this.timeframeSeconds * 1000;
+                return ohlcv;
+            }
+        }
+
+        // Chart initialization
+        let ohlcvGenerator = null, candleData = null, volumeData = null;
+        const chartContainer = document.getElementById('chart-container');
+        const chartElement = document.getElementById('chart');
+        
+        const chart = LightweightCharts.createChart(chartElement, {
+            width: chartContainer.clientWidth,
+            height: Math.max(400, window.innerHeight * 0.6),
+            timeScale: { timeVisible: true, secondsVisible: true },
+            layout: {
+                background: { color: '#222' },
+                textColor: '#DDD',
+            },
+            grid: {
+                vertLines: { color: '#444' },
+                horzLines: { color: '#444' },
+            }
+        });
+
+        const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries);
+        const volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
+            priceFormat: {
+                type: 'volume',
+            },
+            priceScaleId: '',
+        });
+        candleSeries.priceScale().applyOptions({
+            scaleMargins: {
+                top: 0.05, // highest point of the series will be 10% away from the top
+                bottom: 0.15, // lowest point will be 40% away from the bottom
+            },
+        });
+        volumeSeries.priceScale().applyOptions({
+            // set the positioning of the volume series
+            scaleMargins: {
+                top: 0.9, // highest point of the series will be 70% away from the top
+                bottom: 0,
+            },
+        });
+        chart.applyOptions({
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+            },
+            color: '#2962FF',
+            rightPriceScale: { visible: true }
+        });
+        chart.priceScale().applyOptions({
+            borderColor: '#71649C',
+        });
+        chart.timeScale().applyOptions({
+            borderColor: '#71649C',
+        });
+
+        // Get the current users primary locale
+        const currentLocale = window.navigator.languages[0];
+        // Create a number format using Intl.NumberFormat
+        const myPriceFormatter = Intl.NumberFormat(currentLocale, {
+            style: 'currency',
+            currency: 'USD', // Currency for data points
+        }).format;
+        chart.applyOptions({
+            localization: {
+                priceFormatter: myPriceFormatter,
+            },
+        });
+
+        chart.applyOptions({
+            layout: {
+                fontFamily: "'Roboto', Arial, sans-serif",
+            },
+        });
+
+        // Function to generate and update chart data
+        function updateChart() {
+            const errorDiv = document.getElementById('error');
+            errorDiv.innerText = '';
+
+            try {
+                // Get input values
+                const startDate = new Date(document.getElementById('startDate').value).getTime();
+                if (isNaN(startDate)) throw new Error('Invalid start date');
+                const timeframe = document.getElementById('timeframe').value;
+                const shift = parseFloat(document.getElementById('shift').value);
+                if (isNaN(shift) || shift <= 0) throw new Error('Shift must be a positive number');
+                const pricePercentage = parseFloat(document.getElementById('price-percentage').value);
+                const volumePercentage = parseFloat(document.getElementById('volume-percentage').value);
+                if (isNaN(pricePercentage) || pricePercentage < 0) throw new Error('Price percentage must be non-negative');
+                if (isNaN(volumePercentage) || volumePercentage < 0) throw new Error('Volume percentage must be non-negative');
+                const numCandles = parseInt(document.getElementById('numCandles').value);
+                if (isNaN(numCandles) || numCandles <= 0 || numCandles > 5000) throw new Error('Number of candles must be between 1 and 5000');
+
+                // Generate new data
+                ohlcvGenerator = new OHLCVGenerator(startDate, timeframe, shift, pricePercentage, volumePercentage);
+                let data = [];
+                for (let i = 0; i < numCandles; i++) {
+                    data.push(ohlcvGenerator.next());
+                }
+
+                // Prepare chart data
+                candleData = data.map(d => ({
+                    time: Math.floor(d.timestamp / 1000),
+                    open: d.open,
+                    high: d.high,
+                    low: d.low,
+                    close: d.close
+                }));
+                volumeData = data.map(d => ({
+                    time: Math.floor(d.timestamp / 1000),
+                    value: d.volume,
+                    color: d.close > d.open ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)'
+                }));
+
+                // Update chart
+                candleSeries.setData(candleData);
+                volumeSeries.setData(volumeData);
+                chart.timeScale().fitContent();
+            } catch (e) {
+                errorDiv.innerText = `Error: ${e.message}`;
+            }
+        }
+
+        function generateOneMoreData() {
+            const errorDiv = document.getElementById('error');
+
+            try {
+                // Get input values
+                if (ohlcvGenerator == null) {
+                    throw new Error('OHLCV generator has not been created');
+                }
+
+                // Generate new data
+                let data = [];
+                for (let i = 0; i < 1; i++) {
+                    data.push(ohlcvGenerator.next());
+                }
+
+                // Prepare chart data
+                candleData = [...candleData, ...data.map(d => ({
+                    time: Math.floor(d.timestamp / 1000),
+                    open: d.open,
+                    high: d.high,
+                    low: d.low,
+                    close: d.close
+                }))];
+                volumeData = [...volumeData, ...data.map(d => ({
+                    time: Math.floor(d.timestamp / 1000),
+                    value: d.volume,
+                    color: d.close > d.open ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)'
+                }))];
+
+                // Update chart
+                candleSeries.setData(candleData);
+                volumeSeries.setData(volumeData);
+            } catch (e) {
+                errorDiv.innerText = `Error: ${e.message}`;
+            }
+        }
+
+        function resizeChart() {
+            const width = chartContainer.clientWidth;
+            const height = chartContainer.clientHeight;
+            chart.applyOptions({
+                width: width,
+                height: height
+            });
+        }
+
+        window.addEventListener('resize', resizeChart);
+
+        // Initial chart render
+        resizeChart();
+        updateChart();
+
+        // Add event listener for regeneration
+        document.getElementById('regenerateBtn').addEventListener('click', updateChart);
+        document.getElementById('oneStepBtn').addEventListener('click', generateOneMoreData);
+
+        let intervalId = null;
+
+        function startAutoGenerate() {
+            const intervalSeconds = parseFloat(document.getElementById('intervalSeconds').value) * 1000;
+            if (intervalId) clearInterval(intervalId);
+            intervalId = setInterval(generateOneMoreData, intervalSeconds);
+        }
+
+        function stopAutoGenerate() {
+            if (intervalId) clearInterval(intervalId);
+            intervalId = null;
+        }
+
+        document.getElementById('autoGenerate').addEventListener('change', function() {
+            if (this.checked) {
+                startAutoGenerate();
+            } else {
+                stopAutoGenerate();
+            }
+        });
+
+        document.getElementById('intervalSeconds').addEventListener('change', function() {
+            if (document.getElementById('autoGenerate').checked) {
+                startAutoGenerate();
+            }
+        });
+    </script>
+</body>
+</html>
