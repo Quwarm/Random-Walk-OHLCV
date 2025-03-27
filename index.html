@@ -224,7 +224,7 @@
                 <label for="autoGenerate">Auto-generate every N seconds:</label>
                 <div class="auto-generate-group">
                     <input type="checkbox" id="autoGenerate">
-                    <input type="number" id="intervalSeconds" value="1" min="1" step="1">
+                    <input type="number" id="intervalSeconds" value="0.5" min="1" step="1">
                 </div>
             </div>
             <div class="control-item full-width">
@@ -467,6 +467,9 @@
                     value: d.volume,
                     color: d.close > d.open ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)'
                 }))];
+
+                candleData = candleData.slice(-5000);
+                volumeData = volumeData.slice(-5000);
 
                 // Update chart
                 candleSeries.setData(candleData);
