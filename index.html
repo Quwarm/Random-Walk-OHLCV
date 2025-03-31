@@ -98,6 +98,28 @@
             width: 100%;
         }
 
+        .preloaded-data-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .preloaded-data-group input[type="checkbox"] {
+            max-width: 20px;
+            width: 20px;
+            margin: 0;
+        }
+
+        .preloaded-data-group textarea {
+            width: 100%;
+            background-color: #444;
+            color: white;
+        }
+
+        .preloaded-data-group textarea::placeholder {
+            color: #d1d1d1;
+        }
+
         .button-group {
             display: flex;
             gap: 15px;
@@ -151,6 +173,15 @@
             padding: 5px;
         }
 
+        input[type=checkbox]
+        {
+            -ms-transform: scale(1.3); /* IE */
+            -moz-transform: scale(1.3); /* FF */
+            -webkit-transform: scale(1.3); /* Safari and Chrome */
+            -o-transform: scale(1.3); /* Opera */
+            transform: scale(1.3);
+        }
+
         @media (max-width: 600px) {
             #controls {
                 grid-template-columns: 1fr;
@@ -185,6 +216,17 @@
             button {
                 padding: 8px 20px;
             }
+
+            .preloaded-data-group {
+                display: block;
+                text-align: center;
+                border: 3px solid #444;
+                border-radius: 5px;
+                padding: 3px;
+            }
+            .preloaded-data-group * {
+                margin: 3px;
+            }
         }
     </style>
 </head>
@@ -199,14 +241,22 @@
                 <label for="timeframe">Timeframe:</label>
                 <select id="timeframe">
                     <option value="1m" selected>1 Minute</option>
+                    <option value="3m">3 Minutes</option>
                     <option value="5m">5 Minutes</option>
+                    <option value="15m">15 Minutes</option>
+                    <option value="30m">30 Minutes</option>
                     <option value="1h">1 Hour</option>
+                    <option value="2h">2 Hours</option>
+                    <option value="4h">4 Hours</option>
+                    <option value="6h">6 Hours</option>
+                    <option value="8h">8 Hours</option>
+                    <option value="12h">12 Hours</option>
                     <option value="1d">1 Day</option>
                 </select>
             </div>
             <div class="control-item">
-                <label for="shift">Initial Price (Shift):</label>
-                <input type="number" id="shift" value="10000" min="1" step="1">
+                <label for="ohlcShift">Initial Price (ohlcShift):</label>
+                <input type="number" id="ohlcShift" value="10000" min="1" step="1">
             </div>
             <div class="control-item">
                 <label for="numCandles">Number of Candles:</label>
@@ -224,7 +274,17 @@
                 <label for="autoGenerate">Auto-generate every N seconds:</label>
                 <div class="auto-generate-group">
                     <input type="checkbox" id="autoGenerate">
-                    <input type="number" id="intervalSeconds" value="0.5" min="1" step="1">
+                    <input type="number" id="intervalSeconds" value="0.1" step="0.1">
+                </div>
+            </div>
+            <div class="control-item full-width">
+                <label for="preloadedDataToggle">Preloaded data:</label>
+                <div class="preloaded-data-group">
+                    <input type="checkbox" id="preloadedDataToggle" checked>
+                    <textarea id="preloadedDataText" rows="5" placeholder="timestamp;open;high;low;close;volume"></textarea>
+                    <button id="fileBtn">File...</button>
+                    <button id="binanceBtn">Binance...</button>
+                    <!-- <button id="clearBtn">Clear</button> -->
                 </div>
             </div>
             <div class="control-item full-width">
@@ -263,39 +323,221 @@
             }
         }
 
+        // Function to shuffle array
+        function shuffleArray(array) {
+            for (var i = array.length - 1; i > 0; i--) {
+                var j = Math.floor(Math.random() * (i + 1));
+                var temp = array[i];
+                array[i] = array[j];
+                array[j] = temp;
+            }
+        }
+
         // Class to generate OHLCV data points based on Brownian motion
         class OHLCVGenerator {
-            constructor(dateFromTimestamp, timeframe, shift, oneCandlePricePercentageApprox, oneCandleVolumePercentageApprox) {
+            constructor(dateFromTimestamp, timeframe, ohlcShift, oneCandlePricePercentageApprox, oneCandleVolumePercentageApprox, initOhlcv) {
                 this.timestamp = dateFromTimestamp;
                 this.timeframeSeconds = convertTimeframeToSeconds(timeframe);
-                this.shift = shift;
+                this.ohlcShift = ohlcShift;
+                this.volumeShift = 0;
                 this.oneCandlePricePercentageApprox = oneCandlePricePercentageApprox;
                 this.oneCandleVolumePercentageApprox = oneCandleVolumePercentageApprox;
-                this.eventsPerCandle = 10;
+                this.eventsPerCandle = 100;
                 this.oneEventPricePercentage = (oneCandlePricePercentageApprox / 100) / this.eventsPerCandle;
                 this.oneEventVolumePercentage = (oneCandleVolumePercentageApprox / 100) / this.eventsPerCandle;
                 this.ohlcValues = [];
                 this.volumeValues = [];
+                this.initOhlcv = [];
+                if (initOhlcv.length > 1) {
+                    initOhlcv = initOhlcv.slice().sort((a, b) => a[0] - b[0]); // Sort by timestamp
+                    const timeframeMilliseconds = this.timeframeSeconds * 1000;
+                    let tmpOhlcv = [];
+                    for (const ohlcv of initOhlcv) {
+                        const ts = ohlcv[0], open = ohlcv[1], high = ohlcv[2], low = ohlcv[3], close = ohlcv[4], volume = ohlcv[5];
+                        if (tmpOhlcv.length > 0 && tmpOhlcv[tmpOhlcv.length - 1].timestamp >= ts) {
+                            continue; // Remove duplicates
+                        }
+                        tmpOhlcv.push({
+                            timestamp: ts,
+                            open: open,
+                            high: high,
+                            low: low,
+                            close: close,
+                            volume: volume
+                        });
+                    }
+                    initOhlcv = tmpOhlcv;
+                    tmpOhlcv = [];
+                    for (let i = 0; i < initOhlcv.length;) {
+                        let currentOhlcv = initOhlcv[i];
+                        let currentOhlcvTimestamp = Math.floor(currentOhlcv.timestamp / timeframeMilliseconds) * timeframeMilliseconds;
+                        let ohlcv = {
+                            timestamp: currentOhlcvTimestamp,
+                            open: currentOhlcv.open,
+                            high: currentOhlcv.high,
+                            low: currentOhlcv.low,
+                            close: currentOhlcv.close,
+                            volume: currentOhlcv.volume
+                        }; 
+                        let k = 1;
+                        for (let j = i + 1; j < initOhlcv.length; ++j) {
+                            let nextOhlcv = initOhlcv[j];
+                            let nextOhlcvTimestamp = Math.floor(nextOhlcv.timestamp / timeframeMilliseconds) * timeframeMilliseconds;
+                            if (nextOhlcvTimestamp - currentOhlcvTimestamp >= timeframeMilliseconds) {
+                                break;
+                            }
+                            ohlcv.close = nextOhlcv.close;
+                            ohlcv.high = Math.max(ohlcv.high, nextOhlcv.high);
+                            ohlcv.low = Math.min(ohlcv.low, nextOhlcv.low);
+                            ohlcv.volume += nextOhlcv.volume;
+                            k += 1;
+                        }
+                        tmpOhlcv.push(ohlcv);
+                        i += k;
+                    }
+                    for (let x of tmpOhlcv) {
+                        x.volume *= (x.high + x.low) / 2;
+                    }
+                    initOhlcv = tmpOhlcv;
+                    let newOhlcv = [], ohlcValues = [], volumeValues = [], ohlcShift = 0, volumeShift = 0;
+                    for (let i = 0; i < initOhlcv.length; ++i) {
+                        let currentOhlcv = initOhlcv[i];
+                        let nextOhlcv = i + 1 < initOhlcv.length ? initOhlcv[i + 1] : currentOhlcv;
+                        if (nextOhlcv == currentOhlcv && initOhlcv.length > 1) {
+                            const tfMs = (initOhlcv[i].timestamp - initOhlcv[i - 1].timestamp);
+                            nextOhlcv = {
+                                timestamp: (Math.floor(currentOhlcv.timestamp / tfMs) + 1) * tfMs,
+                                open: currentOhlcv.open,
+                                high: currentOhlcv.high,
+                                low: currentOhlcv.low,
+                                close: currentOhlcv.close,
+                                volume: currentOhlcv.volume
+                            };
+                        }
+                        let k = 0;
+                        for (let ts = currentOhlcv.timestamp; ts < nextOhlcv.timestamp; ts += timeframeMilliseconds) {
+                            k += 1;
+                        }
+                        if (k === 0) {
+                            k = 1;
+                        }
+                        if (k === 1) {
+                            newOhlcv.push(currentOhlcv);
+                            continue;
+                        }
+                        const [_, __, ohlcValuesList, volumeValuesList] = this.generateValuesForOHLCV(currentOhlcv, this.eventsPerCandle * k);
+                        for (let ts = currentOhlcv.timestamp, i = 0; i < ohlcValuesList.length; ts += timeframeMilliseconds, i += this.eventsPerCandle) {
+                            ohlcValues = ohlcValuesList.slice(i, i + this.eventsPerCandle);
+                            volumeValues = volumeValuesList.slice(i, i + this.eventsPerCandle);
+                            let open = ohlcValues[0];
+                            let high = Math.max(...ohlcValues);
+                            let low = Math.min(...ohlcValues);
+                            let close = ohlcValues[ohlcValues.length - 1];
+                            let volume = volumeValues.reduce((a, b) => a + b, 0);
+                            let ohlcv = {
+                                timestamp: ts,
+                                open: open,
+                                high: high,
+                                low: low,
+                                close: close,
+                                volume: volume
+                            };
+                            ohlcShift = ohlcValues[ohlcValues.length - 1];
+                            volumeShift = volumeValues[volumeValues.length - 1];
+                            newOhlcv.push(ohlcv);
+                        }
+                    }
+                    const lastOhlcv = newOhlcv[newOhlcv.length - 1];
+                    const lastTimestamp = lastOhlcv.timestamp;
+                    if (ohlcValues.length === 0 || volumeValues.length === 0) {
+                        [ohlcShift, volumeShift, ohlcValues, volumeValues] = this.generateValuesForOHLCV(lastOhlcv, this.eventsPerCandle);
+                    }
+                    this.ohlcShift = ohlcShift;
+                    this.volumeShift = volumeShift;
+                    this.ohlcValues = ohlcValues.slice(-this.eventsPerCandle);
+                    this.volumeValues = volumeValues.slice(-this.eventsPerCandle);
+                    this.initOhlcv = newOhlcv;
+                    this.timestamp = (Math.floor(lastTimestamp / timeframeMilliseconds) + 1) * timeframeMilliseconds;
+                }
+            }
+
+            generateValuesForOHLCV(lastOhlcv, eventsPerCandle) {
+                let volumeShift = lastOhlcv.volume / eventsPerCandle, volumeShiftMax = volumeShift, volumeValues = [];
+                let ohlcShift = lastOhlcv.open, ohlcValues = [];
+                for (let i = 0; i < eventsPerCandle; ++i) {
+                    if (i === 0) {
+                        ohlcValues.push(ohlcShift);
+                        volumeValues.push(volumeShift);
+                        continue;
+                    }
+                    volumeShift = volumeValues[volumeValues.length - 1];
+                    let value = volumeShift * this.oneEventVolumePercentage * normalRandom();
+                    volumeValues.push(volumeShift + value);
+                    if (i === eventsPerCandle - 1) {
+                        ohlcValues.push(lastOhlcv.close);
+                        continue;
+                    }
+                    ohlcShift = ohlcValues[ohlcValues.length - 1];
+                    value = ohlcShift * this.oneEventPricePercentage * normalRandom();
+                    ohlcValues.push(ohlcShift + value);
+                }
+                let ohlcHigh = Math.max(...ohlcValues.slice(1, -1)), ohlcLow = Math.min(...ohlcValues.slice(1, -1));
+                let volumeSum = volumeValues.reduce((a, b) => a + b, 0);
+                for (let i = 0; i < ohlcValues.length; ++i) {
+                    volumeValues[i] = volumeValues[i] / volumeSum * lastOhlcv.volume;
+                    if (i === 0 || i === ohlcValues.length - 1) {
+                        continue;
+                    }
+                    ohlcValues[i] = (ohlcValues[i] - ohlcLow) / (ohlcHigh - ohlcLow) * (lastOhlcv.high - lastOhlcv.low) + lastOhlcv.low;
+                }
+                let highIndex = 0, highDx = null;
+                let lowIndex = 0, lowDx = null;
+                for (let i = 1; i < ohlcValues.length - 1; ++i) {
+                    if (highDx == null || Math.abs(ohlcValues[i] - lastOhlcv.high) < highDx) {
+                        highIndex = i;
+                        highDx = Math.abs(ohlcValues[i] - lastOhlcv.high);
+                    }
+                    if (lowDx == null || Math.abs(ohlcValues[i] - lastOhlcv.low) < lowDx) {
+                        lowIndex = i;
+                        lowDx = Math.abs(ohlcValues[i] - lastOhlcv.low);
+                    }
+                }
+                if (highDx !== null) {
+                    ohlcValues[highIndex] = lastOhlcv.high;
+                }
+                if (lowDx !== null) {
+                    ohlcValues[lowIndex] = lastOhlcv.low;
+                }
+                volumeShift = volumeValues[volumeValues.length - 1];
+                ohlcShift = ohlcValues[ohlcValues.length - 1];
+                return [ohlcShift, volumeShift, ohlcValues, volumeValues];
+            }
+
+            first() {
+                return this.initOhlcv.slice();
             }
 
             next() {
                 for (let i = 0; i < this.eventsPerCandle; i++) {
-                    if (this.volumeValues.length > 0) {
-                        let value = this.shift * this.oneCandleVolumePercentageApprox * normalRandom();
-                        this.volumeValues.push(Math.max(0, this.volumeValues[this.volumeValues.length - 1] + value));
-                    } else {
-                        this.volumeValues.push(Math.max(0, this.shift));
-                    }
-                    if (i == 0 && this.ohlcValues.length > 0) {
-                        this.ohlcValues.push(this.ohlcValues[this.ohlcValues.length - 1]);
-                        continue;
-                    }
                     if (this.ohlcValues.length > 0) {
-                        let value = this.shift * this.oneEventPricePercentage * normalRandom();
-                        this.ohlcValues.push(this.ohlcValues[this.ohlcValues.length - 1] + value);
-                    } else {
-                        this.ohlcValues.push(this.shift);
+                        this.ohlcShift = this.ohlcValues[this.ohlcValues.length - 1];
                     }
+                    if (this.volumeValues.length > 0) {
+                        this.volumeShift = this.volumeValues[this.volumeValues.length - 1];
+                    }
+                    else if (!this.volumeShift) {
+                        this.volumeShift = this.ohlcShift;
+                    }
+                    let value = 0;
+                    if (i !== 0) {
+                        value = this.volumeShift * this.oneEventVolumePercentage * normalRandom();
+                    }
+                    this.volumeValues.push(Math.max(0, this.volumeShift + value));
+                    value = 0;
+                    if (i !== 0) {
+                        value = this.ohlcShift * this.oneEventPricePercentage * normalRandom();
+                    }
+                    this.ohlcValues.push(this.ohlcShift + value);
                 }
                 this.ohlcValues = this.ohlcValues.slice(-this.eventsPerCandle);
                 this.volumeValues = this.volumeValues.slice(-this.eventsPerCandle);
@@ -303,8 +545,7 @@
                 let high = Math.max(...this.ohlcValues);
                 let low = Math.min(...this.ohlcValues);
                 let close = this.ohlcValues[this.ohlcValues.length - 1];
-                let volume = this.volumeValues.reduce((a, b) => a + b, 0) / this.volumeValues.length;
-
+                let volume = this.volumeValues.reduce((a, b) => a + b, 0);
                 let ohlcv = {
                     timestamp: this.timestamp,
                     open: open,
@@ -322,6 +563,7 @@
         let ohlcvGenerator = null, candleData = null, volumeData = null;
         const chartContainer = document.getElementById('chart-container');
         const chartElement = document.getElementById('chart');
+        let preloadedDataChanged = true;
         
         const chart = LightweightCharts.createChart(chartElement, {
             width: chartContainer.clientWidth,
@@ -396,22 +638,59 @@
             errorDiv.innerText = '';
 
             try {
+                let initOhlcv = [];
+                const preloadedDataToggle = document.getElementById('preloadedDataToggle');
+                if (preloadedDataToggle.checked) {
+                    const preloadedDataText = document.getElementById('preloadedDataText');
+                    for (const line of preloadedDataText.value.split('\n')) {
+                        const values = line.split(/[,;\t ]+/);
+                        if (values.length < 2) {
+                            continue;
+                        }
+                        let tsIndex = null;
+                        for (let i = 0; i < values.length; ++i) {
+                            const floatValue = parseFloat(values[i]);
+                            if (floatValue === floatValue && floatValue >= 1000000000) {
+                                tsIndex = i;
+                                break;
+                            }
+                        }
+                        if (tsIndex == null || tsIndex + 1 >= values.length) {
+                            continue;
+                        }
+                        let timeValue = parseFloat(values[tsIndex]);
+                        if (timeValue >= 1000000000000) {
+                            timeValue /= 1000;
+                        }
+                        if (timeValue >= 1000000000000) {
+                            timeValue /= 1000;
+                        }
+                        timeValue = Math.floor(timeValue * 1000); // milliseconds
+                        const openPrice = parseFloat(values[tsIndex + 1]);
+                        const highPrice = parseFloat(values[tsIndex + 2] || values[tsIndex + 1]);
+                        const lowPrice = parseFloat(values[tsIndex + 3] || values[tsIndex + 1]);
+                        const closePrice = parseFloat(values[tsIndex + 4] || values[tsIndex + 1]);
+                        const volume = parseFloat(values[tsIndex + 5] || '0');
+                        initOhlcv.push([timeValue, openPrice, highPrice, lowPrice, closePrice, volume]);
+                    }
+                }
+
                 // Get input values
                 const startDate = new Date(document.getElementById('startDate').value).getTime();
                 if (isNaN(startDate)) throw new Error('Invalid start date');
                 const timeframe = document.getElementById('timeframe').value;
-                const shift = parseFloat(document.getElementById('shift').value);
-                if (isNaN(shift) || shift <= 0) throw new Error('Shift must be a positive number');
+                const ohlcShift = parseFloat(document.getElementById('ohlcShift').value);
+                if (isNaN(ohlcShift) || ohlcShift <= 0) throw new Error('ohlcShift must be a positive number');
                 const pricePercentage = parseFloat(document.getElementById('price-percentage').value);
                 const volumePercentage = parseFloat(document.getElementById('volume-percentage').value);
                 if (isNaN(pricePercentage) || pricePercentage < 0) throw new Error('Price percentage must be non-negative');
                 if (isNaN(volumePercentage) || volumePercentage < 0) throw new Error('Volume percentage must be non-negative');
                 const numCandles = parseInt(document.getElementById('numCandles').value);
-                if (isNaN(numCandles) || numCandles <= 0 || numCandles > 5000) throw new Error('Number of candles must be between 1 and 5000');
+                if (isNaN(numCandles) || numCandles < 0 || numCandles > 5000) throw new Error('Number of candles must be between 0 and 5000');
 
                 // Generate new data
-                ohlcvGenerator = new OHLCVGenerator(startDate, timeframe, shift, pricePercentage, volumePercentage);
-                let data = [];
+                ohlcvGenerator = new OHLCVGenerator(startDate, timeframe, ohlcShift, pricePercentage, volumePercentage, initOhlcv);
+                let data = [...ohlcvGenerator.first()];
                 for (let i = 0; i < numCandles; i++) {
                     data.push(ohlcvGenerator.next());
                 }
@@ -433,9 +712,13 @@
                 // Update chart
                 candleSeries.setData(candleData);
                 volumeSeries.setData(volumeData);
-                chart.timeScale().fitContent();
+                if (preloadedDataChanged || !preloadedDataToggle.checked) {
+                    chart.timeScale().fitContent();
+                }
+                preloadedDataChanged = false;
             } catch (e) {
                 errorDiv.innerText = `Error: ${e.message}`;
+                console.error(e);
             }
         }
 
@@ -476,7 +759,79 @@
                 volumeSeries.setData(volumeData);
             } catch (e) {
                 errorDiv.innerText = `Error: ${e.message}`;
+                console.error(e);
             }
+        }
+
+        // function clearPreloadedData() {
+        //     document.getElementById('preloadedDataText').value = '';
+        // }
+
+        function loadFromFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.onchange = e => {
+              const file = e.target.files[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = event => {
+                  const text = event.target.result.trim();
+                  const preloadedDataText = document.getElementById('preloadedDataText');
+                  preloadedDataText.value = preloadedDataText.value.concat((preloadedDataText.value.length > 0 ? '\n\n' : '').concat(text));
+                  preloadedDataChanged = true;
+                };
+                reader.readAsText(file);
+              }
+            };
+            document.body.appendChild(input);
+            input.click();
+            document.body.removeChild(input);
+        }
+
+        function loadFromBinance() {
+            const preloadedDataText = document.getElementById('preloadedDataText');
+            const timeframe = document.getElementById('timeframe').value;
+            let fullSymbol = prompt('(spot|swap):symbol[:1000[:YYYY-mm-dd]]', 'spot:btcusdt');
+            if (!fullSymbol) {
+              return;
+            }
+            let ds = fullSymbol.split(':');
+            if (ds.length < 2) {
+                return;
+            }
+            let contractType = ds[0].trim();
+            let symbol = ds[1].trim();
+            let cnt = (ds[2] || '1000').trim();
+            let endTime = ds[3] ? new Date(ds[3]).getTime() : Date.now();
+            let line = '';
+            if (contractType == 'spot') {
+              line = 'https://api.binance.com/api/v3/klines?symbol=' + symbol.toUpperCase();
+            }
+            if (contractType == 'swap') {
+              line = 'https://fapi.binance.com/fapi/v1/continuousKlines?contracttype=PERPETUAL&pair=' + symbol.toUpperCase();
+            }
+            if (!line || !symbol) {
+                return;
+            }
+            line += '&interval=' + timeframe + '&endTime=' + endTime + '&limit=' + cnt;
+            let request = fetch(line, {
+                method: 'get',
+                credentials: 'same-origin'
+            }).then(async function(response) {
+                return response.json();
+            }).then((arg) => {
+                let inputData = [];
+                for (let x of arg) {
+                    const timestamp = x[0];
+                    const open = x[1];
+                    const high = x[2];
+                    const low = x[3];
+                    const close = x[4];
+                    const volume = x[5];
+                    inputData.push(`${timestamp};${open};${high};${low};${close};${volume}`);
+                }
+                preloadedDataText.value = inputData.join('\n');
+            })
         }
 
         function resizeChart() {
@@ -497,6 +852,11 @@
         // Add event listener for regeneration
         document.getElementById('regenerateBtn').addEventListener('click', updateChart);
         document.getElementById('oneStepBtn').addEventListener('click', generateOneMoreData);
+        // document.getElementById('clearBtn').addEventListener('click', clearPreloadedData);
+        document.getElementById('fileBtn').addEventListener('click', loadFromFile);
+        document.getElementById('binanceBtn').addEventListener('click', loadFromBinance);
+        document.getElementById('preloadedDataToggle').addEventListener('change', () => { preloadedDataChanged = true; });
+        document.getElementById('preloadedDataText').addEventListener('change', () => { preloadedDataChanged = true; });
 
         let intervalId = null;
 
